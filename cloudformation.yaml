@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Automatically archive a file from the web to an S3 bucket at regular intervals.
+
+Parameters: 
+  DownloadURL: 
+    Type: String
+    Description: Specify the URL of a file to automatically archive to S3 on a set schedule.
+  Schedule: 
+    Type: String
+    Default: rate(1 hour)
+    Description: Specify a CloudWatch Event Schedule Expression at which to invoke this function; see http://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html.
+  ObjectNameFormat: 
+    Type: String
+    Default: "%Y-%m-%dT%H:%M:%S"
+    Description: Specify a format string for the resulting S3 object; see https://docs.python.org/3.6/library/datetime.html#strftime-strptime-behavior.
+          
+Resources:
+  DownloadDestination:
+    Type: "AWS::S3::Bucket"
+  ArchiverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: archiver.lambda_handler
+      Runtime: python3.6
+      Timeout: 300
+      CodeUri: archiver.py
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref DownloadDestination
+          OBJECT_NAME_FORMAT: !Ref ObjectNameFormat
+          DOWNLOAD_URL: !Ref DownloadURL
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref Schedule
+      Policies:
+       - AWSLambdaBasicExecutionRole 
+       - Version: '2012-10-17' 
+         Statement:
+           - Effect: Allow
+             Action:
+               - s3:PutObject
+             Resource: !Join ['/', [!GetAtt [DownloadDestination, Arn], '*']]
+
+Outputs:
+  DownloadDestination:
+    Description: S3 bucket destination of archived files.
+    Value: !Ref DownloadDestination
